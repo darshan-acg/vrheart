@@ -226,7 +226,8 @@ export default function AnatomyView({ active, beatRef, frame }) {
           <Icon name="x" className="size-4"/>Exit VR
         </button>
         <p className="animate-fade-out-late pointer-events-none absolute inset-x-6 bottom-6 mx-auto max-w-md rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-center text-sm text-slate-200 backdrop-blur-xl">
-          Place your phone in a VR viewer. Look at a structure to select it, or tap the screen. Look down for the menu.
+          Rest the centre dot on a structure — or tap it — to select it. For <b>X-ray</b>, <b>Cutaway</b>, <b>Separate</b> and more,
+          use the menu just under the heart: hold the dot on a button until it fills, or tap the button.
         </p>
       </>}
 

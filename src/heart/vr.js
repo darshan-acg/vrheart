@@ -13,8 +13,9 @@ export const VR_BUTTONS = [
 ]
 
 const LAYOUT = {
-  headset: { panel: [3, 0.6, 0.8], menu: [0, -0.75, 2.2] },
-  stereo: { panel: [3.2, 0.5, 0.5], menu: [0, -2.7, 1.5] },
+  headset: { panel: [3, 0.6, 0.8], menu: [0, -0.75, 2.2], panelScale: 1, menuScale: 1 },
+  // Kept inside the wide phone-viewer field of view: panel to the right, menu just under the heart.
+  stereo: { panel: [2.05, 0.6, 1], menu: [0, -1.9, 1], panelScale: 0.85, menuScale: 1.45 },
 }
 
 function canvasTexture(width, height) {
@@ -84,7 +85,7 @@ function drawPanel(g, { part, bpm, kind }) {
     g.font = `400 32px ${FONT}`
     const help = kind === 'headset'
       ? 'Point a controller at any structure and pull the trigger to select it. Squeeze the grip and move your hand to rotate the heart. Use the menu below for views.'
-      : 'Look at any structure for a moment — or tap the screen — to select it. Look down at the menu to change views or exit.'
+      : 'Hold the dot on a structure — or tap it — to select it. To switch to X-ray, Cutaway and more, use the menu just under the heart: rest the dot on a button until it fills, or tap the button.'
     wrap(g, help, 56, 210, W - 112, 46, 6)
     return
   }
@@ -177,7 +178,9 @@ export function createVRInterface() {
       group.scale.setScalar(baseScale)
       const layout = LAYOUT[kind]
       panel.position.set(...layout.panel)
+      panel.scale.setScalar(layout.panelScale)
       menu.position.set(...layout.menu)
+      menu.scale.setScalar(layout.menuScale)
       camera.getWorldPosition(look)
       panel.lookAt(look)
       menu.lookAt(look)

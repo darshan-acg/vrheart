@@ -57,7 +57,7 @@ button:focus-visible, input:focus-visible {
 }
 
 .animate-fade-out-late {
-  animation: fade-out-late 7s ease forwards;
+  animation: fade-out-late 12s ease forwards;
 }
 
 /* Range slider */

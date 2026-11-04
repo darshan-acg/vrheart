@@ -201,6 +201,10 @@ export default function HeartScene({ beatRef, selected, onSelect, mode, explode,
     scene.add(camera)
     const stereoEffect = new StereoEffect(renderer)
     stereoEffect.setEyeSeparation(0.18)
+    // Mirrors the StereoEffect's eye cameras so a tap can be traced through the eye it landed in.
+    const eyes = new THREE.StereoCamera()
+    eyes.aspect = 0.5
+    eyes.eyeSep = 0.18
     const spin = new THREE.Euler()
     const noSpin = new THREE.Euler()
     let grab = null
@@ -224,6 +228,26 @@ export default function HeartScene({ beatRef, selected, onSelect, mode, explode,
       if (target?.button) runAction(target.button.userData.action)
       else if (target?.part) callbacks.current.onSelect(target.part)
       else if (clearOnEmpty) callbacks.current.onSelect(null)
+    }
+    // Phone viewer taps: the centre divider (where a viewer's trigger lever touches) acts on the
+    // reticle; anywhere else selects exactly the button or structure tapped in that eye.
+    function tapStereo(event) {
+      const rect = canvas.getBoundingClientRect()
+      const x = event.clientX - rect.left
+      const half = rect.width / 2
+      if (Math.abs(x - half) < rect.width * 0.06) {
+        activate(gaze.target, false)
+        return
+      }
+      const left = x < half
+      camera.updateMatrixWorld()
+      eyes.update(camera)
+      const eye = left ? eyes.cameraL : eyes.cameraR
+      eye.updateMatrixWorld()
+      eye.projectionMatrixInverse.copy(eye.projectionMatrix).invert()
+      ndc.set(((x - (left ? 0 : half)) / half) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
+      raycaster.setFromCamera(ndc, eye)
+      activate(rayTarget(raycaster), false)
     }
 
     const rayGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)])
@@ -257,8 +281,7 @@ export default function HeartScene({ beatRef, selected, onSelect, mode, explode,
     const onDown = (event) => { down = { x: event.clientX, y: event.clientY, time: performance.now() } }
     const onUp = (event) => {
       if (down && Math.hypot(event.clientX - down.x, event.clientY - down.y) < 6 && performance.now() - down.time < 700) {
-        // In the phone viewer a tap selects whatever the reticle is on.
-        if (settings.current?.stereo) activate(gaze.target, false)
+        if (settings.current?.stereo) tapStereo(event)
         else callbacks.current.onSelect(pick(event.clientX, event.clientY))
       }
       down = null
@@ -339,7 +362,10 @@ export default function HeartScene({ beatRef, selected, onSelect, mode, explode,
         controls.enabled = true
         stopMomentum()
         controls.target.copy(HOME_TARGET)
-        camera.position.copy(stereo ? HOME_TARGET.clone().addScaledVector(HOME_OFFSET, 0.8) : homePosition())
+        // Phone viewers have a wide field of view; use one so the menu and panel fit in view.
+        camera.fov = stereo ? 70 : 36
+        camera.updateProjectionMatrix()
+        camera.position.copy(stereo ? HOME_TARGET.clone().addScaledVector(HOME_OFFSET, 0.62) : homePosition())
         if (tooltip.current) tooltip.current.style.opacity = '0'
       }
 
