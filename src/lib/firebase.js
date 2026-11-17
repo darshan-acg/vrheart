@@ -23,7 +23,8 @@ export function subscribeToHeartRate(publish, onError) {
     const bpm = Number(data.bpm)
     const ecgValue = Number(data.ecg_value)
     publish({
-      bpm: Number.isFinite(bpm) && bpm > 0 ? Math.round(bpm) : null,
+      // 0 is a real reading (no pulse detected); null means the field is missing.
+      bpm: data.bpm != null && Number.isFinite(bpm) && bpm >= 0 ? Math.round(bpm) : null,
       ecgValue: Number.isFinite(ecgValue) ? ecgValue : null,
       receivedAt: Date.now(),
     })

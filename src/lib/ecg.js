@@ -18,17 +18,14 @@ function syntheticSample(phase, seconds) {
     + (Math.random() - 0.5) * 0.042
 }
 
-// Data adapter. getRate() may return a live BPM (e.g. from Firebase) to pace the waveform;
-// when it returns null the demo profile's target rate is used.
+// Data adapter. getRate() may return a live BPM (e.g. from Firebase) to pace the waveform:
+// a positive value sets the rate, 0 draws a flat line with no beats, and null uses the demo profile.
 export function subscribeToDemo(profile, publish, getRate = () => null) {
-  const pace = () => {
-    const live = getRate()
-    return live ? Math.min(220, Math.max(30, live)) : TARGET[profile] + (Math.random() - 0.5) * 5
-  }
+  const demoRate = () => TARGET[profile] + (Math.random() - 0.5) * 5
   let tick = performance.now()
   let sampleTime = tick
   let phase = 0
-  let rate = pace()
+  let rate = demoRate()
   let lastR = null
   let lastBeat = null
   let bpm = null
@@ -36,6 +33,9 @@ export function subscribeToDemo(profile, publish, getRate = () => null) {
   let samples = []
   const timer = setInterval(() => {
     const now = performance.now()
+    const live = getRate()
+    if (live !== null) rate = live > 0 ? Math.min(220, Math.max(30, live)) : 0
+    else if (rate === 0) rate = demoRate()
     const lag = Math.max(0, now - tick - FRAME_MS)
     tick = now
     // After a background-tab stall, start a fresh strip without backfilling beats.
@@ -49,11 +49,18 @@ export function subscribeToDemo(profile, publish, getRate = () => null) {
     }
     while (sampleTime + SAMPLE_MS <= now) {
       sampleTime += SAMPLE_MS
+      if (rate === 0) {
+        // No pulse: flat baseline; the next beat starts a fresh R–R measurement.
+        phase = 0
+        lastR = null
+        samples.push(0.025 * Math.sin(sampleTime / 1000 * 1.7) + (Math.random() - 0.5) * 0.02)
+        continue
+      }
       const previous = phase
       phase += SAMPLE_MS * rate / 60000
       if (phase >= 1) {
         phase -= 1
-        rate = pace()
+        if (live === null) rate = demoRate()
       }
       if (previous < 0.35 && phase >= 0.35) {
         if (lastR !== null) bpm = Math.round(60000 / (sampleTime - lastR))

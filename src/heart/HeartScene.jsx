@@ -347,7 +347,9 @@ export default function HeartScene({ beatRef, selected, onSelect, mode, explode,
 
       const now = Date.now()
       const beat = beatRef.current
-      const rr = clamp(60000 / (beat?.bpm || 72), 300, 2000)
+      // bpm 0 from the sensor means no pulse: hold the heart still in diastole.
+      const stopped = beat?.bpm === 0
+      const rr = stopped ? 2000 : clamp(60000 / (beat?.bpm || 72), 300, 2000)
       const lastR = beat?.lastBeat && now - beat.lastBeat < 3000 ? beat.lastBeat : origin
       const cutTarget = s.mode === 'cutaway' ? CUT_DEPTH : 3
       cut.constant += (cutTarget - cut.constant) * (1 - Math.exp(-dt * 4))
@@ -447,7 +449,7 @@ export default function HeartScene({ beatRef, selected, onSelect, mode, explode,
       }
       model.root.rotation.copy(xr ? spin : noSpin)
       updateHeart(model, {
-        dt, time: timer.getElapsed(), tR: ((now - lastR) % rr + rr) % rr, rr,
+        dt, time: timer.getElapsed(), tR: stopped ? 1500 : ((now - lastR) % rr + rr) % rr, rr, stopped, blockage: beat?.blockage ?? 0, markers: !xr && !stereo, rate: beat?.bpm || 72,
         selected: s.selected, hovered, mode: s.mode, explode: s.explode,
         flow: s.flow, isolate: s.isolate, labels: s.labels && !xr && !stereo,
       })

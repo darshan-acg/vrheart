@@ -1,5 +1,6 @@
 import { formatTime } from '../lib/ecg.js'
 import { Icon, Segmented, Waveform, BeatingHeart, card, eyebrow } from './ui.jsx'
+import ConditionCard from './ConditionCard.jsx'
 
 const RHYTHMS = [{ id: 'baseline', name: 'Baseline' }, { id: 'slow', name: 'Slow' }, { id: 'fast', name: 'Fast' }]
 
@@ -14,10 +15,11 @@ function Metric({ title, value, unit, detail, icon, tone = 'text-slate-300' }) {
   </div>
 }
 
-export default function MonitorView({ current, status, link, setLink, profile, setProfile, live, limits, setLimits, validLimits, alert }) {
+export default function MonitorView({ current, status, link, setLink, profile, setProfile, live, condition, limits, setLimits, validLimits, alert }) {
   const streaming = status === 'Streaming'
   const isLive = live.bpm !== null
   return <div className="grid grid-cols-1 gap-4">
+    <ConditionCard condition={condition}/>
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
       <section className={card + ' relative overflow-hidden p-6'}>
         <div className="pointer-events-none absolute -top-24 -right-24 size-64 rounded-full bg-rose-500/20 blur-3xl"/>
@@ -98,7 +100,7 @@ export default function MonitorView({ current, status, link, setLink, profile, s
         </div>
       </div>
       {!validLimits && <p className="mt-4 text-sm text-amber-200">Set limits from 1 to 250 BPM with the low limit below the high limit.</p>}
-      {alert && <p role="alert" className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{alert} · {isLive ? 'Live' : 'Simulated'} heart rate crossed your configured threshold.</p>}
+      {alert && <p role="alert" className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{alert} · {isLive ? 'Live' : 'Simulated'} heart rate is outside your configured range.</p>}
     </section>
   </div>
 }

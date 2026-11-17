@@ -121,6 +121,15 @@ button:focus-visible, input:focus-visible {
   background: rgba(76, 5, 25, 0.8);
   color: #fff;
 }
+.heart-label.blockage-label,
+.heart-label.blockage-label.is-visible {
+  pointer-events: none;
+  cursor: default;
+  border-color: color-mix(in srgb, var(--dot) 60%, transparent);
+  background: rgba(40, 4, 12, 0.85);
+  color: #fff;
+  font-weight: 600;
+}
 .heart-label:hover {
   border-color: rgba(255, 255, 255, 0.35);
 }

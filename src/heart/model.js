@@ -239,6 +239,7 @@ function track(part, material) {
   material.transparent = true
   material.userData.baseOpacity = material.opacity
   material.userData.baseEmissive = material.emissive?.clone() ?? null
+  material.userData.baseColor = material.color?.clone() ?? null
   material.userData.baseIntensity = material.emissiveIntensity ?? 1
   if (material.clippingPlanes?.length) part.clipped = true
   part.materials.add(material)
@@ -500,6 +501,8 @@ export function buildHeart({ cut }) {
     { points: [[-0.62, -0.02, 0.4], [-0.55, -0.45, 0.5], [-0.3, -0.8, 0.5]], radius: 0.02 },
   ], 0.024, vessel(env, 0xd8402f, { bumpScale: 0 }))
 
+  const blockageFx = addBlockage(coronary, env)
+
   const veins = make('cardiac-veins', 'coronary', [0.1, -0.3, -1.3], { xray: 0.6 })
   vesselTree(veins, [
     { points: [[0.42, -0.9, 0.52], [0.3, -0.4, 0.64], [0.12, 0.05, 0.58], [0.5, 0.2, 0.32], [0.82, 0.05, -0.15], [0.7, -0.12, -0.55]], radius: 0.022, taper: 1.6 },
@@ -620,10 +623,70 @@ export function buildHeart({ cut }) {
   }
 
   return {
-    root, parts, explode: 0, baseScale: 1,
+    root, parts, explode: 0, baseScale: 1, blockage: 0, blockageFx,
     pickables: Object.values(parts).flatMap((part) => part.meshes),
     textures: [env.fibre, env.glowMap],
   }
+}
+
+// Illustrative coronary blockage on the LAD (first coronary branch). Hidden until a condition needs it.
+function addBlockage(part, env) {
+  const flow = part.flows[0]
+  const at = 0.38
+  const group = new THREE.Group()
+  group.position.copy(flow.curve.getPointAt(at))
+  group.visible = false
+  part.inner.add(group)
+  const tangent = flow.curve.getTangentAt(at)
+
+  const plaque = new THREE.Mesh(blob({ radii: [0.052, 0.046, 0.052], seed: 21, rough: 0.28 }),
+    new THREE.MeshStandardMaterial({ color: 0xf2c75c, roughness: 0.55, emissive: 0x7a5200, emissiveIntensity: 0.7, transparent: true }))
+  const clot = new THREE.Mesh(blob({ radii: [0.04, 0.034, 0.04], seed: 5, rough: 0.35 }),
+    new THREE.MeshStandardMaterial({ color: 0x4a0510, roughness: 0.75, emissive: 0x300008, transparent: true }))
+  clot.position.copy(tangent).multiplyScalar(-0.035)
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: env.glowMap, color: 0xff3030, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true, opacity: 0,
+  }))
+  glow.renderOrder = 21
+  group.add(plaque, clot, glow)
+
+  const element = document.createElement('div')
+  element.className = 'heart-label blockage-label'
+  element.style.setProperty('--dot', '#ff3b3b')
+  const label = new CSS2DObject(element)
+  label.position.set(0, 0.12, 0)
+  group.add(label)
+  return { flow, at, group, plaque, clot, glow, label, text: '' }
+}
+
+const NARROWED = new THREE.Color(0xffb020)
+const BLOCKED = new THREE.Color(0xff2a2a)
+const ISCHEMIC = new THREE.Color(0x4a2a6a)
+
+function updateBlockage(model, f, part) {
+  const fx = model.blockageFx
+  const b = model.blockage
+  const fade = Math.min(1, part.opacity * 1.4)
+  fx.group.visible = b > 0.02 && part.opacity > 0.05
+  if (!fx.group.visible) {
+    fx.label.element.classList.remove('is-visible')
+    return
+  }
+  const narrowing = smoothstep(0.02, 0.5, b)
+  const blocked = smoothstep(0.55, 1, b)
+  const beat = 0.5 + 0.5 * Math.sin(f.time * (blocked > 0.5 ? 6 : 3))
+  fx.plaque.scale.setScalar(Math.max(0.001, narrowing))
+  fx.plaque.material.opacity = fade
+  fx.clot.scale.setScalar(Math.max(0.001, blocked))
+  fx.clot.material.opacity = fade
+  fx.glow.material.color.copy(NARROWED).lerp(BLOCKED, blocked)
+  fx.glow.material.opacity = narrowing * fade * (0.45 + 0.55 * beat)
+  fx.glow.scale.setScalar(0.22 + 0.12 * beat + 0.1 * blocked)
+
+  const text = blocked > 0.5 ? 'Blocked artery (LAD) · heart attack' : 'Narrowed artery (LAD)'
+  if (text !== fx.text) fx.label.element.textContent = fx.text = text
+  fx.label.element.style.setProperty('--dot', blocked > 0.5 ? '#ff3b3b' : '#ffb020')
+  fx.label.element.classList.toggle('is-visible', f.markers !== false && narrowing > 0.5 && part.opacity > 0.25)
 }
 
 function labelAnchor(part) {
@@ -658,10 +721,14 @@ const flashAt = (t, start, end) => t < start ? 0 : t <= end ? 1 : Math.exp(-(t -
 const dummy = new THREE.Object3D()
 const point = new THREE.Vector3()
 
-// f: { dt, time, tR (ms since R peak), rr (ms), selected, hovered, mode, explode, flow, isolate, labels }
+// f: { dt, time, tR (ms since R peak), rr (ms), stopped, blockage (0–1), markers, selected, hovered, mode, explode, flow, isolate, labels }
 export function updateHeart(model, f) {
   const ease = (rate) => 1 - Math.exp(-f.dt * rate)
   model.explode += (f.explode - model.explode) * ease(5)
+  model.blockage += ((f.blockage ?? 0) - model.blockage) * ease(3)
+  const blockedAmount = smoothstep(0.55, 1, model.blockage)
+  // Blood moves faster at higher heart rates (more output per minute).
+  const rateScale = clamp((f.rate ?? 72) / 72, 0.5, 2.2)
   const k = clamp(f.rr / 800, 0.55, 1)
   const tSA = mod(f.tR + 260 * k, f.rr)
   const contraction = pulse(f.tR, 20 * k, 360 * k)
@@ -698,6 +765,10 @@ export function updateHeart(model, f) {
       } else if (material.emissive) {
         material.emissive.copy(material.userData.baseEmissive).lerp(part.glow, part.highlight)
       }
+      // Heart attack illustration: muscle fed by the blocked LAD turns dusky.
+      if (part.id === 'left-ventricle' && material.userData.baseColor) {
+        material.color.copy(material.userData.baseColor).lerp(ISCHEMIC, 0.55 * blockedAmount * (0.8 + 0.2 * Math.sin(f.time * 2)))
+      }
     }
 
     part.group.position.copy(part.explode).multiplyScalar(model.explode)
@@ -719,16 +790,19 @@ export function updateHeart(model, f) {
     }
 
     if (part.flowMesh) {
-      const show = (f.flow || isSelected) && part.opacity > 0.2
+      const show = (f.flow || isSelected || (part.id === 'coronary-arteries' && model.blockage > 0.05)) && part.opacity > 0.2
       part.flowMesh.visible = show
       if (show) {
         const speed = part.kind === 'coronary' ? (part.pulsatile ? 0.3 + 0.35 * (1 - contraction) : 0.3)
           : part.pulsatile ? 0.18 + 1.3 * semilunar : 0.38
         let index = 0
         for (const flow of part.flows) {
-          flow.phase = (flow.phase + f.dt * speed / flow.length) % 1
+          // Past a blockage blood cannot flow: squeeze the LAD's particles upstream of the plaque.
+          const squeeze = flow === model.blockageFx.flow ? model.blockage : 0
+          flow.phase = (flow.phase + f.dt * (f.stopped ? 0 : speed * rateScale * (1 - 0.6 * squeeze)) / flow.length) % 1
           for (let i = 0; i < flow.count; i++, index++) {
-            const t = (flow.offsets[i] + flow.phase) % 1
+            const raw = (flow.offsets[i] + flow.phase) % 1
+            const t = raw + (raw * model.blockageFx.at - raw) * squeeze
             flow.curve.getPointAt(t, point).add(flow.jitter[i])
             dummy.position.copy(point)
             dummy.scale.setScalar(flow.size * (0.4 + 0.6 * Math.min(1, t * 12, (1 - t) * 12)))
@@ -754,6 +828,8 @@ export function updateHeart(model, f) {
       halo.sprite.material.opacity = part.opacity * (0.25 + 0.75 * flash)
       halo.sprite.scale.setScalar(halo.size * (0.6 + 0.5 * flash))
     }
+
+    if (part.id === 'coronary-arteries') updateBlockage(model, f, part)
 
     const showLabel = f.labels && (!part.internal || revealed) && part.opacity > 0.25
     const element = part.label.element

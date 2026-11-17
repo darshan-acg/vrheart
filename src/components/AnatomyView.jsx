@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import HeartScene from '../heart/HeartScene.jsx'
 import { CATEGORIES, PARTS, PART_BY_ID } from '../heart/anatomy.js'
 import { Icon, Segmented, ToolButton, Waveform, BeatingHeart, card, eyebrow } from './ui.jsx'
+import ConditionCard from './ConditionCard.jsx'
+import { LEVEL_STYLE } from '../lib/condition.js'
 
 const MODES = [
   { id: 'exterior', name: 'Exterior', icon: 'eye' },
@@ -144,11 +146,12 @@ function StructureList({ selected, onSelect }) {
   </section>
 }
 
-export default function AnatomyView({ active, beatRef, frame }) {
+export default function AnatomyView({ active, beatRef, frame, condition }) {
   const [selected, setSelected] = useState(null)
   const [mode, setMode] = useState('exterior')
   const [explode, setExplode] = useState(0)
-  const [flow, setFlow] = useState(false)
+  // Blood flow is on by default; it follows the live heart rate and freezes when there is no pulse.
+  const [flow, setFlow] = useState(true)
   const [labels, setLabels] = useState(false)
   const [autoRotate, setAutoRotate] = useState(true)
   const [isolate, setIsolate] = useState(true)
@@ -247,6 +250,10 @@ export default function AnatomyView({ active, beatRef, frame }) {
       </div>
 
       <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-col gap-2 sm:inset-x-4 sm:bottom-4">
+        {condition && condition.blockage > 0 && <div className={'pointer-events-none flex items-center gap-2 self-start rounded-2xl border px-3 py-2 text-xs font-semibold backdrop-blur-xl ' + LEVEL_STYLE[condition.level].chip}>
+          <span className={'size-2 rounded-full animate-pulse ' + LEVEL_STYLE[condition.level].dot}/>
+          {condition.title} · {condition.blockage >= 1 ? 'blocked artery shown' : 'narrowed artery shown'}
+        </div>}
         {part && <div className="pointer-events-auto flex items-center gap-3 self-start rounded-2xl border border-white/10 bg-slate-950/70 py-2 pr-2 pl-3 backdrop-blur-xl lg:hidden">
           <span className="size-2.5 rounded-full shadow-[0_0_10px_currentColor]" style={{ background: part.color, color: part.color }}/>
           <span className="text-sm font-semibold text-white">{part.name}</span>
@@ -282,6 +289,7 @@ export default function AnatomyView({ active, beatRef, frame }) {
     </section>
 
     <aside ref={details} className="flex min-w-0 scroll-mt-20 flex-col gap-4 lg:overflow-y-auto lg:pr-1 lg:pb-2">
+      <ConditionCard condition={condition} compact/>
       {part ? <PartDetails part={part} onSelect={(id) => choose(id, true)} isolate={isolate} setIsolate={setIsolate}/>
         : <Overview onSelect={(id) => choose(id, true)} setMode={setMode} setExplode={setExplode} setFlow={setFlow} onVR={enterVR} headset={xr}/>}
       <StructureList selected={selected} onSelect={(id) => choose(id, true)}/>
