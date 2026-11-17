@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { HISTORY_KEY, INITIAL, WINDOW, readHistory, subscribeToDemo } from './lib/ecg.js'
+import { subscribeToHeartRate } from './lib/firebase.js'
 import { Icon, BeatingHeart } from './components/ui.jsx'
 import AnatomyView from './components/AnatomyView.jsx'
 import MonitorView from './components/MonitorView.jsx'
@@ -20,8 +21,22 @@ function App() {
   const [selected, setSelected] = useState(null)
   const [storageError, setStorageError] = useState(false)
   const [limits, setLimits] = useState({ low: '55', high: '105' })
+  const [live, setLive] = useState({ bpm: null, ecgValue: null, receivedAt: null, error: null })
   const beatRef = useRef(null)
   const savedAt = useRef(null)
+  const liveRef = useRef(live)
+
+  // Real heart rate from Firebase Realtime Database (node 5802 → bpm, ecg_value).
+  useEffect(() => subscribeToHeartRate(
+    (reading) => {
+      liveRef.current = { ...reading, error: null }
+      setLive(liveRef.current)
+    },
+    (error) => {
+      liveRef.current = { ...liveRef.current, bpm: null, error: error.message }
+      setLive(liveRef.current)
+    },
+  ), [])
 
   useEffect(() => {
     beatRef.current = null
@@ -32,14 +47,17 @@ function App() {
     }
     if (link !== 'streaming') return
     return subscribeToDemo(profile, (snapshot) => {
-      beatRef.current = { lastBeat: snapshot.lastBeat, bpm: snapshot.bpm }
-      setFrame(snapshot)
-      if (snapshot.bpm !== null && snapshot.samples.length === WINDOW &&
-          (savedAt.current === null || snapshot.timestamp - savedAt.current >= 10000)) {
-        savedAt.current = snapshot.timestamp
-        setHistory((rows) => [{ ...snapshot, profile }, ...rows].slice(0, 36))
+      // Prefer the real BPM from Firebase; the waveform is paced to match it.
+      const liveBpm = liveRef.current.bpm
+      const next = liveBpm === null ? snapshot : { ...snapshot, bpm: liveBpm }
+      beatRef.current = { lastBeat: next.lastBeat, bpm: next.bpm }
+      setFrame(next)
+      if (next.bpm !== null && next.samples.length === WINDOW &&
+          (savedAt.current === null || next.timestamp - savedAt.current >= 10000)) {
+        savedAt.current = next.timestamp
+        setHistory((rows) => [{ ...next, profile: liveBpm === null ? profile : 'live' }, ...rows].slice(0, 36))
       }
-    })
+    }, () => liveRef.current.bpm)
   }, [link, profile])
 
   useEffect(() => {
@@ -52,9 +70,10 @@ function App() {
   const low = Number(limits.low)
   const high = Number(limits.high)
   const validLimits = limits.low !== '' && limits.high !== '' && low >= 1 && high <= 250 && low < high
-  const current = link === 'streaming' ? frame : INITIAL
+  const isLive = live.bpm !== null
+  const current = link !== 'streaming' ? INITIAL : isLive ? { ...frame, bpm: live.bpm } : frame
   const alert = validLimits && current.bpm !== null &&
-    (current.bpm < low ? 'Below demo limit' : current.bpm > high ? 'Above demo limit' : '')
+    (current.bpm < low ? 'Below limit' : current.bpm > high ? 'Above limit' : '')
   const status = link === 'offline' ? 'Disconnected' : link === 'recovering' ? 'Reconnecting…' :
     current.timestamp === null ? 'Starting…' : 'Streaming'
 
@@ -78,7 +97,9 @@ function App() {
           </button>)}
         </nav>
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden rounded-full border border-amber-400/20 bg-amber-400/[0.07] px-3 py-1 text-[11px] font-semibold tracking-wide text-amber-200 lg:inline">SIMULATED · EDUCATIONAL</span>
+          {isLive
+            ? <span className="hidden rounded-full border border-emerald-400/20 bg-emerald-400/[0.07] px-3 py-1 text-[11px] font-semibold tracking-wide text-emerald-200 lg:inline">LIVE · FIREBASE</span>
+            : <span className="hidden rounded-full border border-amber-400/20 bg-amber-400/[0.07] px-3 py-1 text-[11px] font-semibold tracking-wide text-amber-200 lg:inline">SIMULATED · EDUCATIONAL</span>}
           <button onClick={() => setTab('monitor')} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] py-1.5 pr-3 pl-2 hover:bg-white/[0.07]">
             <BeatingHeart bpm={current.bpm} className="size-5"/>
             <span className="font-mono text-sm font-semibold text-white tabular-nums">{current.bpm ?? '—'}</span>
@@ -92,7 +113,7 @@ function App() {
     <main className="mx-auto max-w-[1600px] px-3 pt-3 pb-28 sm:px-6 sm:pt-5 md:pb-8">
       <AnatomyView active={tab === 'anatomy'} beatRef={beatRef} frame={current}/>
       {tab === 'monitor' && <MonitorView current={current} status={status} link={link} setLink={setLink}
-        profile={profile} setProfile={setProfile} limits={limits} setLimits={setLimits} validLimits={validLimits} alert={alert}/>}
+        profile={profile} setProfile={setProfile} live={live} limits={limits} setLimits={setLimits} validLimits={validLimits} alert={alert}/>}
       {tab === 'history' && <HistoryView history={history} selected={selected} setSelected={setSelected} storageError={storageError}
         onClear={() => { setHistory([]); setSelected(null); savedAt.current = Date.now() }}/>}
       <footer className={'mt-6 text-center text-xs text-slate-600 ' + (tab === 'anatomy' ? 'lg:hidden' : '')}>

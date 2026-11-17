@@ -18,12 +18,17 @@ function syntheticSample(phase, seconds) {
     + (Math.random() - 0.5) * 0.042
 }
 
-// Data adapter. A future hardware source can publish the same snapshot fields.
-export function subscribeToDemo(profile, publish) {
+// Data adapter. getRate() may return a live BPM (e.g. from Firebase) to pace the waveform;
+// when it returns null the demo profile's target rate is used.
+export function subscribeToDemo(profile, publish, getRate = () => null) {
+  const pace = () => {
+    const live = getRate()
+    return live ? Math.min(220, Math.max(30, live)) : TARGET[profile] + (Math.random() - 0.5) * 5
+  }
   let tick = performance.now()
   let sampleTime = tick
   let phase = 0
-  let rate = TARGET[profile]
+  let rate = pace()
   let lastR = null
   let lastBeat = null
   let bpm = null
@@ -48,7 +53,7 @@ export function subscribeToDemo(profile, publish) {
       phase += SAMPLE_MS * rate / 60000
       if (phase >= 1) {
         phase -= 1
-        rate = TARGET[profile] + (Math.random() - 0.5) * 5
+        rate = pace()
       }
       if (previous < 0.35 && phase >= 0.35) {
         if (lastR !== null) bpm = Math.round(60000 / (sampleTime - lastR))
